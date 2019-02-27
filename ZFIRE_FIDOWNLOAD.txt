@@ -1,0 +1,395 @@
+*----------------------------------------------------------------------*
+*  Descripción:
+*=====>Este programa permite bajar toda la información contable a un archivo TXT
+*  Desarrollador:
+*=====> Hugo Alberto Chávez Gómez
+*  Fecha:
+*=====> 18/10/2018
+*  Transacción:
+*=====> (ZFITR_ALLDOWNLOAD)
+*  Dependencias:
+*=====> BSEG y BKPF Principalmente
+*  Modificaciones:
+*=====> (hchavez Enero 2019 se pasá el signo negativo de derecha a izquierda para mejorar compatibilidad)
+*----------------------------------------------------------------------*
+REPORT  zfire_fidownload.
+DATA: narch TYPE string,"Nombre del archivo
+      head TYPE string,"cabecera del archivo
+      mes type MONAT,"Mes a extraer
+      tuplas TYPE I,"cantidad de renglones
+      value_text(18) type c, "para conversion de cantidades
+      BEGIN OF wa_bkpf,
+        belnr TYPE  bkpf-belnr,"documento
+        budat TYPE  bkpf-budat,"fecha contable
+        blart TYPE  bkpf-blart,"tipo de documento
+        usnam TYPE  bkpf-usnam,"usuario
+        tcode TYPE  bkpf-tcode,"transaccion
+        stblg TYPE  bkpf-stblg,"Anulado con...
+        bktxt TYPE  bkpf-bktxt,"texto cabecera
+      END OF wa_bkpf,
+      BEGIN OF wa_conta,
+        gjahr TYPE  bkpf-gjahr,"Ejercicio
+        belnr TYPE  bkpf-belnr,"Documento
+        buzei TYPE  bseg-buzei,"posicion
+        hkont TYPE  bseg-hkont,"Cuenta Contable
+        shkzg TYPE  bseg-shkzg,"Debe / Haber
+        wrbtr TYPE  bseg-wrbtr,"Importe
+        lifnr TYPE  bseg-lifnr,"Acreedor
+        anln1 TYPE  bseg-anln1,"Activo
+        anln2 TYPE  bseg-anln2,"Subnúmero
+        zuonr TYPE  bseg-zuonr,"Asignación
+        geber TYPE  bseg-geber,"Fondo
+        fistl TYPE  bseg-fistl,"Centro Gestor
+        fkber_long  TYPE  bseg-fkber_long,"área Funcional
+        fipos(30) TYPE C,"  bseg-fipos,"Pospre
+        projk TYPE  bseg-projk,"Elemento Pep
+        sgtxt TYPE  bseg-sgtxt,"Texto Posicion
+        fecha(10) TYPE  c,"Fecha Contable
+        blart TYPE  bkpf-blart,"Tipo de Documento
+        usnam TYPE  bkpf-usnam,"Usuario
+        tcode TYPE  bkpf-tcode,"Transaccion usada
+        stblg TYPE  bkpf-stblg,"Anulado con
+        bktxt TYPE  bkpf-bktxt,"texto cabecera
+      END OF wa_conta,
+      "Cabecera del archivo a crear
+      BEGIN OF wa_cab,
+        c1(20) TYPE c,
+        c2(20) TYPE c ,
+        c3(20) TYPE c ,
+        c4(20) TYPE c ,
+        c5(20) TYPE c,
+        c6(20) TYPE c ,
+        c7(20) TYPE c ,
+        c8(20) TYPE c ,
+        c9(20) TYPE c ,
+        c10(20) TYPE c,
+        c11(20) TYPE c ,
+        c12(20) TYPE c ,
+        c13(20) TYPE c ,
+        c14(20) TYPE c ,
+        c15(20) TYPE c ,
+        c16(20) TYPE c ,
+        c17(20) TYPE c ,
+        c18(20) TYPE c ,
+        c19(20) TYPE c ,
+        c20(20) TYPE c ,
+        c21(20) TYPE c ,
+        c22(20) TYPE c ,
+      END OF wa_cab,
+   it_cab LIKE TABLE OF wa_cab,
+   it_conta LIKE TABLE OF wa_conta,
+   it_bkpf LIKE TABLE OF wa_bkpf.
+FIELD-SYMBOLS <wa_bkpf> LIKE wa_bkpf.
+PARAMETERS:
+   BUKRS type BUKRS DEFAULT '1000',
+   SPRAS type SPRAS DEFAULT 'S',
+   KTOPL type KTOPL DEFAULT '1000',
+   FIKRS type FIKRS DEFAULT '1000',
+   gjahr TYPE gjahr DEFAULT sy-datum+0(4),
+   Conta RADIOBUTTON GROUP x1 DEFAULT 'X'," anualizado todos los tiempos presupuestales contemplanto los doce meses
+   Maestro RADIOBUTTON GROUP x1."todos los tiempos presupuesales en los periodos seleccionados
+
+
+CONCATENATE  'c:\downloads\Ejercicio-' gjahr '.txt' INTO narch.
+"*************Cabecera*************************
+    wa_cab-c1 = 'Ejercicio'.
+    wa_cab-c2 = 'Documento'.
+    wa_cab-c3 = 'Posición'.
+    wa_cab-c4 = 'Cuenta Contable'.
+    wa_cab-c5 = 'Debe / Haber'.
+    wa_cab-c6 = 'Importe'.
+    wa_cab-c7 = 'Acreedor'.
+    wa_cab-c8 = 'Activo'.
+    wa_cab-c9 = 'Subnúmero'.
+    wa_cab-c10 = 'Asignación'.
+    wa_cab-c11 = 'Fondo'.
+    wa_cab-c12 = 'Centro Gestor'.
+    wa_cab-c13 = 'Area Funcional'.
+    wa_cab-c14 = 'Pospre'.
+    wa_cab-c15 = 'Elemento Pep'.
+    wa_cab-c16 = 'Texto Posición'.
+    wa_cab-c17 = 'Fecha Contable'.
+    wa_cab-c18 = 'Tipo de Documento'.
+    wa_cab-c19 = 'Usuario'.
+    wa_cab-c20 = 'Transacción usada'.
+    wa_cab-c21 = 'Anulado con'.
+    wa_cab-c22 = 'Texto cabecera'.
+   APPEND wa_cab to it_cab.
+* Display save dialog window
+   DATA: ld_filename TYPE string,
+        ld_path TYPE string,
+        ld_fullpath TYPE string,
+        ld_result TYPE i.
+if   Conta = 'X'.
+  "Pedimos ubicacion y nombre del Archivo
+  CALL METHOD cl_gui_frontend_services=>file_save_dialog
+    EXPORTING
+      window_title      = 'Archivo donde se descargará el ejercicio '
+      DEFAULT_EXTENSION = 'txt'
+      default_file_name = narch
+      INITIAL_DIRECTORY = 'c:\downloads\'
+    CHANGING
+      filename          = ld_filename
+      path              = ld_path
+      fullpath          = ld_fullpath
+      user_action       = ld_result.
+
+"Generamos Cabecera
+  CALL METHOD cl_gui_frontend_services=>gui_download
+    EXPORTING
+      filename                  = ld_fullpath
+      filetype                  = 'ASC'
+      append                    = 'X'
+      write_field_separator     = 'X'
+      codepage                  = '4310'
+      write_lf_after_last_line  = 'X'
+    changing
+      data_tab                  = it_cab.
+  IF sy-subrc <> 0.
+   MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+              WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+  ENDIF.
+mes = 1.
+"16 periodos en esta configuración
+while mes <= 16.
+clear: it_bkpf,it_conta.
+ "Traemos todos los datos de cabecera del ejercicio
+ SELECT  belnr budat blart usnam tcode stblg bktxt INTO TABLE it_bkpf
+      FROM bkpf
+      WHERE BUKRS = BUKRS and BELNR <> 0 and gjahr = gjahr and monat = mes.
+ "Si hay datos...
+if sy-subrc = 0.
+    "Traemos todos los datos de posicion del ejercicio
+    SELECT gjahr belnr buzei hkont shkzg wrbtr lifnr anln1 anln2 zuonr geber fistl fkber_long fipos projk sgtxt
+      INTO  CORRESPONDING FIELDS OF TABLE it_conta
+      FROM bseg
+      FOR ALL ENTRIES IN it_bkpf
+      where BELNR = it_bkpf-belnr AND
+      BUKRS = BUKRS  and gjahr = gjahr and BUZEI <> 0.
+      if sy-subrc = 0.
+          "le agregamos los campos faltantes
+          LOOP AT it_conta INTO  wa_conta.
+            READ TABLE it_bkpf WITH  KEY belnr = wa_conta-belnr ASSIGNING <wa_bkpf>.
+            IF sy-subrc = 0.
+              MOVE-CORRESPONDING <wa_bkpf> TO wa_conta.
+              "convertimos fecha a formato dd/mm/aaaa
+              wa_conta-fecha = ''.
+              concatenate <wa_bkpf>-budat+6(2) '/' <wa_bkpf>-budat+4(2) '/' <wa_bkpf>-budat+0(4) into wa_conta-fecha.
+              "Si la posicion es un Haber 'H' se multiplica por menos 1
+              if wa_conta-shkzg = 'H'.
+                wa_conta-wrbtr  = wa_conta-wrbtr * -1.
+              endif.
+              "Validamos si la pospre es estadística requiere conversión
+              if wa_conta-fipos < '1000'.
+                CALL FUNCTION 'CONVERSION_EXIT_FMCIS_OUTPUT'
+                  EXPORTING
+                    input         = wa_conta-fipos
+                 IMPORTING
+                   OUTPUT        =  wa_conta-fipos.
+               "*** pasamoe el posible signo negativo de derecha a izquierda que es mucho mas estándar
+*                if wa_conta-wrbtr < 0.
+*                  write wa_conta-wrbtr to value_text. "pasamos el valor a una cadena
+*                  CALL FUNCTION 'CLOI_PUT_SIGN_IN_FRONT'
+*                    CHANGING
+*                      value         = value_text.
+*                  move value_text to wa_conta-wrbtr. "Regresamos el valor convertido.
+*
+*                endif. " de si la cantidad es negativa
+              endif.
+              MODIFY it_conta FROM wa_conta.
+            ENDIF.
+          ENDLOOP.
+      endif."de si hay detalle
+endif."de si hay datos de cabecera
+
+"Bajamos la información a disco apendizando al archivo existente
+"pero solo si hay información en la tabla.
+tuplas = 0.
+DESCRIBE TABLE it_conta LINES tuplas.
+if tuplas > 0 .
+"CL_GUI_FRONTEND_SERVICES=>GUI_DOWNLOAD
+  CALL METHOD cl_gui_frontend_services=>gui_download
+    EXPORTING
+      filename                  = ld_fullpath
+      filetype                  = 'ASC'
+      append                    = 'X'
+      write_field_separator     = 'X'
+      codepage                  = '4310'
+      write_lf_after_last_line  = 'X'
+      DAT_MODE                  = 'X'
+    changing
+      data_tab                  = it_conta .
+  IF sy-subrc <> 0.
+   MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+              WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+  ENDIF.
+Endif."de si tuplas > 0.
+  mes = mes + 1.
+endwhile."del mes <= 16
+CLEAR: it_conta,it_bkpf.
+Write : 'Proceso terminado  ejercicio-' , gjahr.
+endif. " de si eligieron bajar todo el ejercicio contable
+"*************************Bajamos los datos maestros********************************************************
+if Maestro = 'X'.
+   CONCATENATE  'c:\downloads\Datos Maestros-' gjahr '.txt' INTO narch.
+    "Pedimos ubicacion y nombre del Archivo
+  CALL METHOD cl_gui_frontend_services=>file_save_dialog
+    EXPORTING
+      window_title      = 'Carpeta donde se  descargaran los Datos Maestros'
+      DEFAULT_EXTENSION = 'txt'
+      default_file_name = narch
+      INITIAL_DIRECTORY = 'c:\downloads\'
+    CHANGING
+      filename          = ld_filename
+      path              = ld_path
+      fullpath          = ld_fullpath
+      user_action       = ld_result.
+"********************************************************************************
+"************************Proveedores*********************************************
+"********************************************************************************
+Data: BEGIN OF wa_lfa1,
+        LIFNR type LIFNR,
+        NAME1 type NAME1_GP,
+        NAME2 type NAME1_GP,
+        NAME3 type NAME1_GP,
+        STCD1 type STCD1,
+      end of wa_lfa1,
+      begin of wa_txt,
+        LIFNR type LIFNR,
+        NAME type string,
+        STCD1 type STCD1,
+      end of wa_txt,
+      it_txt like table of wa_txt,
+      it_lfa1 like TABLE OF wa_lfa1.
+      select lifnr name1 name2 name3 STCD1 into table it_lfa1 from lfa1.
+concatenate ld_path '\Proveedores.txt' into ld_fullpath.
+loop at it_lfa1 into wa_lfa1.
+  MOVE-CORRESPONDING wa_lfa1 to wa_txt.
+  concatenate wa_lfa1-name1 wa_lfa1-name2  wa_lfa1-name3  into wa_txt-name.
+  APPEND wa_txt to it_txt.
+ENDLOOP.
+
+"CL_GUI_FRONTEND_SERVICES=>GUI_DOWNLOAD
+  CALL METHOD cl_gui_frontend_services=>gui_download
+    EXPORTING
+      filename                  = ld_fullpath
+      filetype                  = 'ASC'
+      write_field_separator     = 'X'
+      codepage                  = '4310'
+      write_lf_after_last_line  = 'X'
+    changing
+      data_tab                  = it_txt.
+  IF sy-subrc <> 0.
+   MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+              WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+  ENDIF.
+  clear: it_lfa1, it_txt.
+"********************************************************************************
+"************************Plan de Cuentas*****************************************
+"********************************************************************************
+Data: BEGIN OF wa_skat,
+          SAKNR type SAKNR,"cuenta contable
+          TXT50 type TXT50_SKAT,"Descripción
+      end of wa_skat,
+      it_skat like TABLE OF wa_skat.
+      select SAKNR TXT50 into table it_skat from skat
+        where SPRAS = SPRAS and KTOPL = KTOPL.
+concatenate ld_path '\Plan de Cuentas.txt' into ld_fullpath.
+"CL_GUI_FRONTEND_SERVICES=>GUI_DOWNLOAD
+  CALL METHOD cl_gui_frontend_services=>gui_download
+    EXPORTING
+      filename                  = ld_fullpath
+      filetype                  = 'ASC'
+      write_field_separator     = 'X'
+      codepage                  = '4310'
+      write_lf_after_last_line  = 'X'
+    changing
+      data_tab                  = it_skat .
+  IF sy-subrc <> 0.
+   MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+              WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+  ENDIF.
+  clear it_skat.
+
+"*****************************************************************************************
+"********************************Fondos***************************************************
+"*****************************************************************************************
+Data: BEGIN OF wa_FMFINT,
+       FINCODE type BP_GEBER,
+       BESCHR type FM_BESCHR,
+      end of wa_FMFINT,
+      it_FMFINT like TABLE OF wa_FMFINT.
+      select FINCODE BESCHR into table it_FMFINT from FMFINT
+        where SPRAS = SPRAS and FIKRS = FIKRS.
+concatenate ld_path '\Fondos.txt' into ld_fullpath.
+"CL_GUI_FRONTEND_SERVICES=>GUI_DOWNLOAD
+  CALL METHOD cl_gui_frontend_services=>gui_download
+    EXPORTING
+      filename                  = ld_fullpath
+      filetype                  = 'ASC'
+      write_field_separator     = 'X'
+      codepage                  = '4310'
+      write_lf_after_last_line  = 'X'
+    changing
+      data_tab                  = it_FMFINT .
+  IF sy-subrc <> 0.
+   MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+              WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+  ENDIF.
+  clear it_FMFINT.
+
+"*****************************************************************************************
+"********************************Pospres***************************************************
+"*****************************************************************************************
+Data: BEGIN OF wa_FMCIT,
+        FIPEX type FM_FIPEX,
+        TEXT1 type FM_BESCHR0,
+      end of wa_FMCIT,
+      it_FMCIT like TABLE OF wa_FMCIT.
+      select FIPEX TEXT1 into table it_FMCIT from FMCIT
+        where SPRAS = SPRAS and FIKRS = FIKRS and GJAHR = GJAHR.
+concatenate ld_path '\Pospres.txt' into ld_fullpath.
+"CL_GUI_FRONTEND_SERVICES=>GUI_DOWNLOAD
+  CALL METHOD cl_gui_frontend_services=>gui_download
+    EXPORTING
+      filename                  = ld_fullpath
+      filetype                  = 'ASC'
+      write_field_separator     = 'X'
+      codepage                  = '4310'
+      write_lf_after_last_line  = 'X'
+    changing
+      data_tab                  = it_FMCIT .
+  IF sy-subrc <> 0.
+   MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+              WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+  ENDIF.
+  clear it_FMCIT.
+
+"*****************************************************************************************
+"********************************Ceges***************************************************
+"*****************************************************************************************
+Data: BEGIN OF wa_FMFCTRT,
+        FICTR type FM_FICTR,
+        BESCHR type FM_BESCHR,
+      end of wa_FMFCTRT,
+      it_FMFCTRT like TABLE OF wa_FMFCTRT.
+      select FICTR BESCHR into table it_FMFCTRT from FMFCTRT
+        where SPRAS = SPRAS and FIKRS = FIKRS.
+concatenate ld_path '\Ceges.txt' into ld_fullpath.
+"CL_GUI_FRONTEND_SERVICES=>GUI_DOWNLOAD
+  CALL METHOD cl_gui_frontend_services=>gui_download
+    EXPORTING
+      filename                  = ld_fullpath
+      filetype                  = 'ASC'
+      write_field_separator     = 'X'
+      codepage                  = '4310'
+      write_lf_after_last_line  = 'X'
+    changing
+      data_tab                  = it_FMFCTRT.
+  IF sy-subrc <> 0.
+   MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+              WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+  ENDIF.
+  clear it_FMFCTRT.
+write 'Datos Maestros Exportados'.
+endif." de si eligieron bajar los datos maestros
